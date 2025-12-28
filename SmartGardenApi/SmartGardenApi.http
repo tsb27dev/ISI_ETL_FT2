@@ -1,0 +1,6 @@
+@SmartGardenApi_HostAddress = http://localhost:5094
+
+GET {{SmartGardenApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

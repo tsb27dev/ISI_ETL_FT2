@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "YRS+biC7u9m5wzWYzuZ+IdYatA8URglwyynogfHwYpM=",
+  "Source": "SmartGardenApi",
+  "BasePath": "_content/SmartGardenApi",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
