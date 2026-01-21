@@ -37,7 +37,7 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore SmartGardenApi.csproj
 
-    - name: Build
+    - name: Build with dotnet
       run: dotnet build SmartGardenApi.csproj --configuration Release --no-restore
 
     - name: Publish
