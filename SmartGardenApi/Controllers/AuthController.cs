@@ -1,29 +1,31 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using SmartGardenApi.Data;
 using SmartGardenApi.Models;
 using SmartGardenApi.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SmartGardenApi.Controllers;
 
 [ApiController]
-[Route("[controller]")] // Fica /auth
+[Route("[controller]")]
+[Authorize]
 public class AuthController : ControllerBase
 {
-    private readonly GardenContext _context;
+    private readonly IGardenRepository _repo;
     private readonly AuthService _authService;
 
-    public AuthController(GardenContext context, AuthService authService)
+    public AuthController(IGardenRepository repo, AuthService authService)
     {
-        _context = context;
+        _repo = repo;
         _authService = authService;
     }
 
     // 1. REGISTAR (Cria Conta)
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register(string username, string password)
     {
-        if (await _context.Users.AnyAsync(u => u.Username == username))
+        if (await _repo.UsernameExistsAsync(username))
             return BadRequest("Username já existe.");
 
         var user = new User
@@ -32,17 +34,17 @@ public class AuthController : ControllerBase
             PasswordHash = _authService.HashPassword(password)
         };
 
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
+        await _repo.CreateUserAsync(user);
 
         return Ok("Utilizador criado com sucesso.");
     }
 
     // 2. LOGIN (Retorna o Token)
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login(string username, string password)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+        var user = await _repo.GetUserByUsernameAsync(username);
         
         if (user == null || !_authService.VerifyPassword(password, user.PasswordHash))
             return Unauthorized("Username ou Password incorretos.");
@@ -57,13 +59,12 @@ public class AuthController : ControllerBase
     [HttpPut("change-password")]
     public async Task<IActionResult> ChangePassword(string username, string oldPassword, string newPassword)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+        var user = await _repo.GetUserByUsernameAsync(username);
         
         if (user == null || !_authService.VerifyPassword(oldPassword, user.PasswordHash))
             return BadRequest("Dados inválidos.");
 
-        user.PasswordHash = _authService.HashPassword(newPassword);
-        await _context.SaveChangesAsync();
+        await _repo.UpdateUserPasswordHashAsync(user.Id, _authService.HashPassword(newPassword));
 
         return Ok("Password atualizada.");
     }
@@ -72,13 +73,12 @@ public class AuthController : ControllerBase
     [HttpDelete("delete")]
     public async Task<IActionResult> DeleteAccount(string username, string password)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+        var user = await _repo.GetUserByUsernameAsync(username);
 
         if (user == null || !_authService.VerifyPassword(password, user.PasswordHash))
             return BadRequest("Dados inválidos ou utilizador não encontrado.");
 
-        _context.Users.Remove(user);
-        await _context.SaveChangesAsync();
+        await _repo.DeleteUserAsync(user.Id);
 
         return Ok("Conta eliminada.");
     }

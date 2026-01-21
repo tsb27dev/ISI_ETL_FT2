@@ -3,12 +3,15 @@ using CoreWCF;
 using CoreWCF.Configuration;
 using CoreWCF.Description;
 using Microsoft.AspNetCore.Authentication.JwtBearer; // <--- Necessário (Instala o package se der erro)
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SmartGardenApi.Data;
 using SmartGardenApi.Services;
 using SmartGardenApi.Services.Soap;
+using SQLitePCL;
+
+// Initialize SQLite native provider
+Batteries.Init();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +25,9 @@ builder.Services.AddControllers()
     });
 
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
+
+// HttpContextAccessor para serviços SOAP verificarem autenticação
+builder.Services.AddHttpContextAccessor();
 
 // Adiciona o AuthService
 builder.Services.AddScoped<AuthService>();
@@ -74,7 +80,9 @@ builder.Services.AddSwaggerGen(c =>
     c.DescribeAllParametersInCamelCase();
 });
 
-builder.Services.AddDbContext<GardenContext>(options => options.UseSqlite("Data Source=garden.db"));
+// SQLite (sem Entity Framework)
+builder.Services.AddSingleton<SqliteGardenDb>();
+builder.Services.AddScoped<IGardenRepository, SqliteGardenRepository>();
 // User-Agent para o WeatherService não ser bloqueado
 builder.Services.AddHttpClient<WeatherService>(client =>
 {
@@ -119,7 +127,7 @@ app.UseServiceModel(serviceBuilder =>
 
 using (var scope = app.Services.CreateScope())
 {
-    scope.ServiceProvider.GetRequiredService<GardenContext>().Database.EnsureCreated();
+    await scope.ServiceProvider.GetRequiredService<SqliteGardenDb>().EnsureCreatedAsync();
 }
 
 app.Run();
