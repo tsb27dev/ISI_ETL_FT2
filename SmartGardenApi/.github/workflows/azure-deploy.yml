@@ -8,8 +8,10 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: smartgarden   # Nome do teu App Service no Azure
+  AZURE_WEBAPP_NAME: smartgarden
   DOTNET_VERSION: '9.0.x'
+  PROJECT_PATH: './SmartGardenApi'
+  PUBLISH_PATH: './publish'
 
 jobs:
   build-and-deploy:
@@ -27,30 +29,36 @@ jobs:
     - name: Verify project structure
       run: |
         echo "Current directory: $(pwd)"
-        echo "Files in root:"
-        ls -la
-        if [ ! -f "SmartGardenApi/SmartGardenApi.csproj" ]; then
-          echo "ERROR: SmartGardenApi/SmartGardenApi.csproj not found!"
+        echo "Project files in SmartGardenApi:"
+        ls -la ${{ env.PROJECT_PATH }}/ | grep -E "\.csproj|\.sln" || echo "No project files found"
+        if [ ! -f "${{ env.PROJECT_PATH }}/SmartGardenApi.csproj" ]; then
+          echo "ERROR: Project file not found at ${{ env.PROJECT_PATH }}/SmartGardenApi.csproj"
+          ls -la ${{ env.PROJECT_PATH }}/
           exit 1
         fi
+        echo "✓ Project file found!"
 
     - name: Restore dependencies
-      run: dotnet restore SmartGardenApi/SmartGardenApi.csproj
+      run: dotnet restore "${{ env.PROJECT_PATH }}/SmartGardenApi.csproj"
 
-    - name: Build with dotnet
-      run: dotnet build SmartGardenApi/SmartGardenApi.csproj --configuration Release --no-restore
+    - name: Build Release
+      run: dotnet build "${{ env.PROJECT_PATH }}/SmartGardenApi.csproj" --configuration Release --no-restore
 
-    - name: Publish
-      run: dotnet publish SmartGardenApi/SmartGardenApi.csproj --configuration Release --no-build --output ./publish
+    - name: Publish Release
+      run: dotnet publish "${{ env.PROJECT_PATH }}/SmartGardenApi.csproj" --configuration Release --no-build --output ${{ env.PUBLISH_PATH }}
+
+    - name: Verify publish output
+      run: |
+        echo "Publish directory contents:"
+        ls -la ${{ env.PUBLISH_PATH }}
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ env.AZURE_WEBAPP_NAME }}
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-        package: ./publish
-        
-    - name: Restart Azure Web App
+        package: ${{ env.PUBLISH_PATH }}
+
+    - name: Deployment complete
       if: success()
-      run: |
-        echo "Deployment completed successfully"
+      run: echo "✓ Successfully deployed to Azure App Service"
