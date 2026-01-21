@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy ASP.Net Core app to Azure Web App - SmartGarden
+name: Build and deploy ASP.Net Core app to Azure Web App - smartgarden
 
 on:
   push:
@@ -51,15 +51,15 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B6A9B05C40334C009E6D3F650FFADFDD }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_A5FC94D6250E4BEB8CE618062E5120DD }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_42C6B2F166484A9A888AF925C0CB1763 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C7D50257927C4986BBA2F6C165993C74 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6AE39DA0976E49F3B341591C55322ED7 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_A2887934B41B4F22ACACDD2A98E896B7 }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'SmartGarden'
+          app-name: 'smartgarden'
           slot-name: 'Production'
           package: .
           
