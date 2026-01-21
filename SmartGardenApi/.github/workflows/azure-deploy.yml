@@ -24,6 +24,16 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    - name: Verify project structure
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Files in root:"
+        ls -la
+        if [ ! -f "SmartGardenApi.csproj" ]; then
+          echo "ERROR: SmartGardenApi.csproj not found!"
+          exit 1
+        fi
+
     - name: Restore dependencies
       run: dotnet restore SmartGardenApi.csproj
 
