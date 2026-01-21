@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: smartgardenapi    # Nome do teu App Service no Azure
+  AZURE_WEBAPP_NAME: smartgarden   # Nome do teu App Service no Azure
   DOTNET_VERSION: '9.0.x'
 
 jobs:
