@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: smartgardenapi    # Nome do teu App Service no Azure
+  AZURE_WEBAPP_NAME: smartgarden   # Nome do teu App Service no Azure
   DOTNET_VERSION: '9.0.x'
 
 jobs:
@@ -25,13 +25,13 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore SmartGardenApi.csproj
 
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build SmartGardenApi.csproj --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish --configuration Release --no-build --output ./publish
+      run: dotnet publish SmartGardenApi.csproj --configuration Release --no-build --output ./publish
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
