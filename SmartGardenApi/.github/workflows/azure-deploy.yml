@@ -29,19 +29,19 @@ jobs:
         echo "Current directory: $(pwd)"
         echo "Files in root:"
         ls -la
-        if [ ! -f "SmartGardenApi.csproj" ]; then
-          echo "ERROR: SmartGardenApi.csproj not found!"
+        if [ ! -f "SmartGardenApi/SmartGardenApi.csproj" ]; then
+          echo "ERROR: SmartGardenApi/SmartGardenApi.csproj not found!"
           exit 1
         fi
 
     - name: Restore dependencies
-      run: dotnet restore SmartGardenApi.csproj
+      run: dotnet restore SmartGardenApi/SmartGardenApi.csproj
 
     - name: Build with dotnet
-      run: dotnet build SmartGardenApi.csproj --configuration Release --no-restore
+      run: dotnet build SmartGardenApi/SmartGardenApi.csproj --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish SmartGardenApi.csproj --configuration Release --no-build --output ./publish
+      run: dotnet publish SmartGardenApi/SmartGardenApi.csproj --configuration Release --no-build --output ./publish
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v3
