@@ -1,24 +1,23 @@
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using SmartGardenApi.Data;
 using SmartGardenApi.Models;
 using SmartGardenApi.Services;
-using Microsoft.AspNetCore.Authorization; // Necessário para a segurança
+using Microsoft.AspNetCore.Authorization;
 
 namespace SmartGardenApi.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-[Authorize] // <--- 1. Protege todo o controller (exige Token por defeito)
+[Authorize]
 public class PlantsController : ControllerBase
 {
-    private readonly GardenContext _context;
+    private readonly IGardenRepository _repo;
     private readonly WeatherService _weatherService;
 
-    public PlantsController(GardenContext context, WeatherService weatherService)
+    public PlantsController(IGardenRepository repo, WeatherService weatherService)
     {
-        _context = context;
+        _repo = repo;
         _weatherService = weatherService;
     }
 
@@ -26,13 +25,12 @@ public class PlantsController : ControllerBase
 
     [HttpGet] 
     public async Task<ActionResult<IEnumerable<Plant>>> GetPlants() 
-        => await _context.Plants.ToListAsync();
+        => await _repo.GetPlantsAsync();
 
     [HttpPost] 
     public async Task<ActionResult<Plant>> CreatePlant(Plant plant)
     {
-        _context.Plants.Add(plant);
-        await _context.SaveChangesAsync();
+        await _repo.CreatePlantAsync(plant);
         return CreatedAtAction(nameof(GetPlants), new { id = plant.Id }, plant);
     }
 
@@ -41,31 +39,22 @@ public class PlantsController : ControllerBase
     {
         if (id != updatedPlant.Id) return BadRequest("ID do URL difere do ID do corpo.");
 
-        var plant = await _context.Plants.FindAsync(id);
-        if (plant == null) return NotFound();
-
-        plant.Name = updatedPlant.Name;
-        plant.Location = updatedPlant.Location;
-        plant.RequiredHumidity = updatedPlant.RequiredHumidity;
-        
-        await _context.SaveChangesAsync();
+        var affected = await _repo.UpdatePlantAsync(updatedPlant);
+        if (affected == 0) return NotFound();
         return NoContent(); 
     }
     
     [HttpDelete("{id}")] 
     public async Task<IActionResult> DeletePlant(int id)
     {
-        var plant = await _context.Plants.FindAsync(id);
-        if (plant == null) return NotFound();
-        _context.Plants.Remove(plant);
-        await _context.SaveChangesAsync();
+        var affected = await _repo.DeletePlantAsync(id);
+        if (affected == 0) return NotFound();
         return NoContent();
     }
 
     // --- 2. EXTERNAL SERVICE ---
     
     [HttpGet("weather-check")]
-    [AllowAnonymous] // <--- 2. Permite acesso sem token (público)
     public async Task<IActionResult> CheckWeather(double lat, double lon)
     {
         var temp = await _weatherService.GetGardenTemperature(lat, lon);
@@ -77,7 +66,7 @@ public class PlantsController : ControllerBase
     [HttpGet("export")]
     public async Task<IActionResult> ExportExcel()
     {
-        var plants = await _context.Plants.ToListAsync();
+        var plants = await _repo.GetPlantsAsync();
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add("GardenData");
 
@@ -112,14 +101,13 @@ public class PlantsController : ControllerBase
         await file.CopyToAsync(stream);
         using var workbook = new XLWorkbook(stream);
         var worksheet = workbook.Worksheet(1);
+        var usedRange = worksheet.RangeUsed();
+        if (usedRange == null) return BadRequest("Excel vazio (sem dados).");
         
-        int updatedCount = 0;
-        int createdCount = 0;
-        
-        // 1. Lista para guardar os IDs que existem no Excel
-        var idsNoExcel = new List<int>();
+        // 1) Ler tudo do Excel para memória (mantém lógica atual, mas sem EF)
+        var rows = new List<(int? Id, string Name, string Location, double RequiredHumidity)>();
 
-        foreach (var row in worksheet.RangeUsed().RowsUsed().Skip(1)) // Skip header
+        foreach (var row in usedRange.RowsUsed().Skip(1)) // Skip header
         {
             // --- Leitura do ID ---
             int id = 0;
@@ -133,66 +121,24 @@ public class PlantsController : ControllerBase
             }
 
             // Se encontrámos um ID válido, guardamo-lo na lista de "Sobreviventes"
-            if (id > 0)
-            {
-                idsNoExcel.Add(id);
-            }
-
             // --- Leitura de Dados ---
             var name = row.Cell(2).GetValue<string>() ?? "Sem Nome";
             var location = row.Cell(3).GetValue<string>() ?? "Sem Local";
-            int humidity = 0;
-            if (row.Cell(4).TryGetValue<int>(out int val)) humidity = val;
+            double humidity = 0;
+            if (row.Cell(4).TryGetValue<double>(out var dVal)) humidity = dVal;
+            else if (row.Cell(4).TryGetValue<int>(out var iVal)) humidity = iVal;
 
-            // --- Upsert ---
-            Plant? existingPlant = null;
-            if (id > 0) existingPlant = await _context.Plants.FindAsync(id);
-
-            if (existingPlant != null)
-            {
-                existingPlant.Name = name;
-                existingPlant.Location = location;
-                existingPlant.RequiredHumidity = humidity;
-                updatedCount++;
-            }
-            else
-            {
-                var newPlant = new Plant
-                {
-                    Name = name,
-                    Location = location,
-                    RequiredHumidity = humidity,
-                    LastWatered = DateTime.Now
-                };
-                _context.Plants.Add(newPlant);
-                // Nota: Plantas novas ainda não têm ID gerado, por isso não vão para a lista 'idsNoExcel',
-                // mas isso não faz mal porque elas estão a ser adicionadas agora.
-                createdCount++;
-            }
+            rows.Add((id > 0 ? id : null, name, location, humidity));
         }
 
-        // --- 2. PASSO NOVO: APAGAR O QUE NÃO ESTÁ NO EXCEL ---
-        
-        // Vamos buscar TODAS as plantas que existem na BD
-        var todasPlantasDb = await _context.Plants.ToListAsync();
-
-        // Filtramos: Queremos as plantas cujo ID *NÃO* está na lista do Excel
-        var plantasParaApagar = todasPlantasDb
-                                .Where(p => !idsNoExcel.Contains(p.Id))
-                                .ToList();
-
-        if (plantasParaApagar.Any())
-        {
-            _context.Plants.RemoveRange(plantasParaApagar);
-        }
-
-        await _context.SaveChangesAsync();
+        // 2) Aplicar sincronização via SQL (delete-not-in + upsert)
+        var (updatedCount, createdCount, deletedCount) = await _repo.SyncPlantsFromExcelAsync(rows);
 
         return Ok(new { 
             Mensagem = "Sincronização Completa.", 
             Atualizados = updatedCount, 
             Criados = createdCount, 
-            Apagados = plantasParaApagar.Count 
+            Apagados = deletedCount 
         });
     }
 }

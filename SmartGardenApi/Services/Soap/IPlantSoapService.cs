@@ -3,7 +3,7 @@ using SmartGardenApi.Models;
 
 namespace SmartGardenApi.Services.Soap;
 
-[ServiceContract] // Marks this interface as a SOAP contract
+[ServiceContract]
 public interface IPlantSoapService
 {
     [OperationContract]

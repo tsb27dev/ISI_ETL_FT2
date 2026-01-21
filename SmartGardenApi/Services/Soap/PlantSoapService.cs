@@ -1,63 +1,119 @@
 using SmartGardenApi.Data;
 using SmartGardenApi.Models;
-using Microsoft.EntityFrameworkCore;
 using CoreWCF;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 namespace SmartGardenApi.Services.Soap;
 
 [ServiceBehavior(IncludeExceptionDetailInFaults = true)]
 public class PlantSoapService : IPlantSoapService
 {
-    private readonly GardenContext _context;
+    private readonly IGardenRepository _repo;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public PlantSoapService(GardenContext context)
+    public PlantSoapService(IGardenRepository repo, IHttpContextAccessor httpContextAccessor)
     {
-        _context = context;
+        _repo = repo;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    /// <summary>
+    /// Verifica se o utilizador está autenticado via JWT Bearer token.
+    /// Verifica primeiro o HttpContext.User, depois valida manualmente o token do header Authorization.
+    /// Lança FaultException se não estiver autenticado.
+    /// </summary>
+    private void EnsureAuthenticated()
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        
+        // Primeiro, verifica se já está autenticado via pipeline do ASP.NET Core
+        if (httpContext != null && httpContext.User.Identity?.IsAuthenticated == true)
+        {
+            return; // Já autenticado
+        }
+
+        // Se não estiver autenticado, tenta validar o token manualmente do header
+        if (httpContext != null)
+        {
+            var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = authHeader.Substring("Bearer ".Length).Trim();
+                if (ValidateToken(token))
+                {
+                    return; // Token válido
+                }
+            }
+        }
+
+        throw new FaultException("Autenticação necessária. Forneça um Bearer token válido no header Authorization.");
+    }
+
+    /// <summary>
+    /// Valida manualmente o token JWT.
+    /// </summary>
+    private bool ValidateToken(string token)
+    {
+        try
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.UTF8.GetBytes(Services.AuthService.SecretKey);
+            
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ClockSkew = TimeSpan.Zero
+            };
+
+            tokenHandler.ValidateToken(token, validationParameters, out _);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<List<Plant>> GetAllPlants()
     {
-        return await _context.Plants.ToListAsync();
+        EnsureAuthenticated();
+        return await _repo.GetPlantsAsync();
     }
 
     public async Task AddPlant(string name, string location, double humidity)
-{
-    // ADICIONA ESTA LINHA:
-    Console.WriteLine($"[SOAP RECEBIDO] A tentar adicionar: {name} na localização {location}");
-
-    var plant = new Plant 
-    { 
-        Name = name, 
-        Location = location, 
-        RequiredHumidity = humidity,
-        LastWatered = DateTime.Now 
-    };
-    
-    _context.Plants.Add(plant);
-    await _context.SaveChangesAsync();
-    
-    // ADICIONA ESTA LINHA:
-    Console.WriteLine("[SOAP SUCESSO] Planta gravada na Base de Dados!");
-}
-
-public async Task UpdatePlant(int id, string name, string location, double humidity)
     {
-        Console.WriteLine($"[SOAP UPDATE] A atualizar ID: {id}");
+        EnsureAuthenticated();
+        var plant = new Plant 
+        { 
+            Name = name, 
+            Location = location, 
+            RequiredHumidity = humidity,
+            LastWatered = DateTime.Now 
+        };
         
-        var plant = await _context.Plants.FindAsync(id);
-        if (plant == null)
-        {
-            // Lança erro visível no SOAP Fault
-            throw new FaultException($"Planta com ID {id} não encontrada.");
-        }
+        await _repo.CreatePlantAsync(plant);
+    }
 
-        plant.Name = name;
-        plant.Location = location;
-        plant.RequiredHumidity = humidity;
-        // Não atualizamos o LastWatered num update de info geral
+    public async Task UpdatePlant(int id, string name, string location, double humidity)
+    {
+        EnsureAuthenticated();
+        
+        var existing = await _repo.GetPlantByIdAsync(id);
+        if (existing == null) throw new FaultException($"Planta com ID {id} não encontrada.");
 
-        await _context.SaveChangesAsync();
-        Console.WriteLine("[SOAP UPDATE] Sucesso!");
+        existing.Name = name;
+        existing.Location = location;
+        existing.RequiredHumidity = humidity;
+
+        var affected = await _repo.UpdatePlantAsync(existing);
+        if (affected == 0) throw new FaultException($"Planta com ID {id} não encontrada.");
     }
     
 }
